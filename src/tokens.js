@@ -426,6 +426,110 @@ const dateTimeLiterals = {
 
 const dateTimeIdentifiers = Object.keys(dateTimeLiterals);
 
+
+/**
+ * A basic key-value store to hold context values.
+ */
+export class BaseContext {
+
+  /**
+   * Creates a new context from a JavaScript object. Non-object values should result
+   * in an empty context.
+   *
+   * @param {any} value
+   */
+  constructor(value = {}) {
+
+    if (!value || typeof value !== 'object') {
+      this.value = {};
+    } else if (value instanceof BaseContext) {
+      this.value = { ...value.value };
+    } else {
+      this.value = { ...value };
+    }
+  }
+
+  /**
+   * Return all defined keys of the context.
+   *
+   * @returns {Array<string>} the keys of the context
+   */
+  getKeys() {
+    return Object.keys(this.value);
+  }
+
+  /**
+   * Returns the value of the given key. If the value is a Context itself,
+   * it should be wrapped in a context class.
+   *
+   * @param {String} key
+   * @returns {BaseContext|ValueProducer|null}
+   */
+  get(key) {
+    const result = this.value[key];
+
+    if (this.isAtomic(result)) {
+      return result;
+    }
+
+    return new BaseContext(this.value[key]);
+
+  }
+
+  /**
+   * Creates a new context with the given key added.
+   *
+   * @param {String} key
+   * @param {any} value
+   * @returns {BaseContext} new context with the given key added
+   */
+  set(key, value) {
+    return new BaseContext(
+      {
+        ...this.value,
+        [key]: value
+      }
+    );
+  }
+
+  /**
+   * Wether the given value is atomic. Non-atomic values need to be wrapped in a
+   * context Class.
+   *
+   * @param {any} value
+   * @returns {Boolean}
+   */
+  isAtomic(value) {
+    return !value ||
+          value instanceof this.constructor ||
+          value instanceof ValueProducer ||
+          typeof value !== 'object';
+  }
+
+  /**
+   * Takes any number of Contexts and merges them into a single Context.
+   *
+   * @param  {...BaseContext} contexts
+   * @returns {BaseContext}
+   */
+  static merge(...contexts) {
+    const merged = contexts.reduce(
+      (merged, context) => {
+        if (!context) {
+          return merged;
+        }
+
+        return {
+          ...merged,
+          ...context.value
+        };
+      }, {}
+    );
+
+    return new BaseContext(merged);
+  }
+}
+
 class Variables {
 
   constructor({
@@ -433,7 +537,7 @@ class Variables {
     tokens = [],
     children = [],
     parent = null,
-    context = { },
+    context = new BaseContext(),
     value,
     raw
   } = {}) {
@@ -509,7 +613,7 @@ class Variables {
   }
 
   contextKeys() {
-    return Object.keys(this.context).map(normalizeContextKey);
+    return this.context.getKeys().map(normalizeContextKey);
   }
 
   get path() {
@@ -526,7 +630,7 @@ class Variables {
 
     const names = [ variable, variable && normalizeContextKey(variable) ];
 
-    const contextKey = Object.keys(this.context).find(
+    const contextKey = this.context.getKeys().find(
       key => names.includes(normalizeContextKey(key))
     );
 
@@ -534,7 +638,7 @@ class Variables {
       return undefined;
     }
 
-    const val = this.context[contextKey];
+    const val = this.context.get(contextKey);
 
     if (val instanceof ValueProducer) {
       return val.get(this);
@@ -620,10 +724,7 @@ class Variables {
 
     LOG_VARS && console.log('[%s] define <%s=%s>', this.path, name, value);
 
-    const context = {
-      ...this.context,
-      [name]: value
-    };
+    const context = this.context.set(name, value);
 
     return this.assign({
       context
@@ -667,7 +768,7 @@ class Variables {
       tokens = [],
       children = [],
       parent = null,
-      context = {},
+      context = new BaseContext(),
       value,
       raw
     } = options;
@@ -676,9 +777,7 @@ class Variables {
       name,
       tokens: [ ...tokens ],
       children: [ ...children ],
-      context: {
-        ...context
-      },
+      context: context,
       parent,
       value,
       raw
@@ -730,10 +829,10 @@ function wrap(variables, scopeName, code) {
  *
  * @return { ContextTracker<Variables> }
  */
-export function trackVariables(context = {}) {
+export function trackVariables(context = {}, ContextClass = BaseContext) {
 
   const start = Variables.of({
-    context
+    context: new ContextClass(context),
   });
 
   return new ContextTracker({
@@ -744,21 +843,18 @@ export function trackVariables(context = {}) {
         const [ thenPart, elsePart ] = variables.children.slice(-2);
 
         variables = variables.assign({
-          value: {
-            ...thenPart?.computedValue(),
-            ...elsePart?.computedValue()
-          }
+          value: ContextClass.merge(
+            thenPart?.computedValue(),
+            elsePart?.computedValue()
+          )
         });
       }
 
       if (term === List) {
         variables = variables.assign({
-          value: variables.children.reduce((value, child) => {
-            return {
-              ...value,
-              ...child?.computedValue()
-            };
-          }, {})
+          value: ContextClass.merge(
+            ...variables.children.map(c => c?.computedValue())
+          )
         });
       }
 
@@ -805,22 +901,21 @@ export function trackVariables(context = {}) {
         let newContext = null;
 
         if (term === pathExpressionStart) {
-          newContext = lastChild?.computedValue();
+          newContext = new ContextClass(lastChild?.computedValue());
         }
 
         if (term === filterExpressionStart) {
-          newContext = {
-            ...currentContext,
-            ...lastChild?.computedValue(),
-            item: lastChild?.computedValue()
-          };
+          newContext = ContextClass.merge(
+            currentContext,
+            lastChild?.computedValue()
+          ).set('item', lastChild?.computedValue());
         }
 
-        return variables.assign({
-          children
-        }).enterScope(prefixedStart).pushChild(lastChild).assign({
-          context: newContext || currentContext
-        });
+        return variables
+          .assign({ children })
+          .enterScope(prefixedStart)
+          .pushChild(lastChild)
+          .assign({ context: newContext || currentContext });
       }
 
       const code = input.read(input.pos, stack.pos);
@@ -839,10 +934,10 @@ export function trackVariables(context = {}) {
 
         return wrap(variables, 'ContextEntry', code).assign(
           {
-            value: {
-              ...variables.value,
-              [name.computedValue()] : value?.computedValue()
-            }
+            value:
+                new ContextClass(variables.value)
+                  .set([ name.computedValue() ], value?.computedValue())
+
           }
         );
       }
@@ -997,11 +1092,7 @@ function getContextValue(variables, args) {
 
   return variables.assign({
     value: [ normalizeContextKey(keyValue), keyValue ].reduce((value, keyValue) => {
-      if (keyValue in contextValue) {
-        return contextValue[keyValue];
-      }
-
-      return value;
+      return contextValue.get(keyValue) || value;
     }, null)
   });
 }
