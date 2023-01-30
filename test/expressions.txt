@@ -1332,6 +1332,42 @@ Expressions(
 )
 
 
+#* IfExpression (special, nested)
+
+(if true then { foo: {a+: 1 }} else { foo: { b-: 1 }}).foo.a+
+(if false then { foo: {a+: 1 }} else { foo: { b-: 1 }}).foo.b-
+
+==>
+
+Expressions(
+  PathExpression(
+    PathExpression(
+      ParenthesizedExpression("(",
+        IfExpression(
+          if,BooleanLiteral,
+          then,Context(...),
+          else,Context(...)
+        ),
+      ")"),
+      VariableName(...)
+    ),
+    VariableName(...)
+  ),
+    PathExpression(
+    PathExpression(
+      ParenthesizedExpression("(",
+        IfExpression(
+          if,BooleanLiteral,
+          then,Context(...),
+          else,Context(...)
+        ),
+      ")"),
+      VariableName(...)
+    ),
+    VariableName(...)
+  )
+)
+
 # FunctionDefinition
 
 function() a
