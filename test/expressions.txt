@@ -2515,4 +2515,15 @@ Expression(
 
 ==>
 
-Expression(⚠)
+Expression(
+  Context("{",
+   ContextEntry(Key(StringLiteral), Context("{",
+      ContextEntry(
+        Key(StringLiteral),
+        ArithmeticExpression(
+          ArithmeticExpression(VariableName(Identifier),ArithOp,⚠),
+          ArithOp,
+          Context("{","}"),⚠)),
+    "}")),
+  "}")
+)

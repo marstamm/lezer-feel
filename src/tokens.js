@@ -982,6 +982,11 @@ export function trackVariables(context = {}, Context = VariableContext) {
         const name = parts[0];
         const value = last(parts);
 
+        // ContextEntry is invalid, do not set any value
+        if (!name) {
+          return variables;
+        }
+
         return wrap(variables, 'ContextEntry', code).assign(
           {
             value: Context
