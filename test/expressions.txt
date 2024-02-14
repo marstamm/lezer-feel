@@ -2503,3 +2503,16 @@ foo[[[[[[[(1..10).start included]]]]]]]
 Expression(
   FilterExpression(VariableName(...), List(...))
 )
+
+
+# Context (error)
+
+{
+ "key": {
+   "smth": v + ^{}"
+  }
+}
+
+==>
+
+Expression(⚠)
