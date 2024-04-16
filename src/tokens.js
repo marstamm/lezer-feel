@@ -59,7 +59,7 @@ const LOG_PARSE = typeof process != 'undefined' && process.env && /\bfparse(:dbg
 const LOG_PARSE_DEBUG = typeof process != 'undefined' && process.env && /\bfparse:dbg\b/.test(process.env.LOG);
 
 // @ts-expect-error env access
-const LOG_VARS = typeof process != 'undefined' && process.env && /\bcontext\b/.test(process.env.LOG);
+const LOG_VARS = true; // typeof process != 'undefined' && process.env && /\bcontext\b/.test(process.env.LOG);
 
 const spaceChars = [
   9, 11, 12, 32, 133, 160,
@@ -610,6 +610,8 @@ class Variables {
       parent: this
     });
 
+    // debugger;
+
     LOG_VARS && console.log('[%s] enter', childScope.path, childScope.context);
 
     return childScope;
@@ -624,6 +626,8 @@ class Variables {
     }
 
     LOG_VARS && console.log('[%s] exit %o\n%s', this.path, this.context, indent(str, '  '));
+
+    console.log(this);
 
     return this.parent.pushChild(this);
   }
@@ -718,7 +722,16 @@ class Variables {
 
     LOG_VARS && console.log('[%s] resolve name <%s=%s>', variableScope.path, variable, this.get(variable));
 
-    return parentScope.pushChild(variableScope);
+    const newContext = this.context.constructor.of(this.context);
+    newContext.value.used = this.context.value.used || [];
+    newContext.value.used.push(variable);
+
+    // console.log(variable, variableScope.path, this.get(variable));
+    // if (variable === 'dob') {
+    //   debugger;
+    // }
+
+    return parentScope.assign({ context: newContext }).pushChild(variableScope);
   }
 
   pushChild(child) {
@@ -1080,6 +1093,7 @@ export function trackVariables(context = {}, Context = VariableContext) {
       if (
         term === VariableName
       ) {
+        context;
         return variables.resolveName();
       }
 
